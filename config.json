@@ -1,4 +1,7 @@
 {
+  "knowledges": {
+    "prefix": "#"
+  },
   "features": {
     "prefix": "/",
     "type": {
@@ -28,6 +31,7 @@
           "image-generation",
           "生成圖片",
           "生成圖像",
+          "生成",
           "畫圖",
           "AI畫圖"
         ],

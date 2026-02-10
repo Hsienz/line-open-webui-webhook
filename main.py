@@ -1,7 +1,9 @@
 import asyncio
 from enum import Enum, auto
+from io import BytesIO
 from flask import Flask, request, abort, send_file
 
+from linebot import LineBotApi
 from linebot.v3 import WebhookHandler
 from linebot.v3.exceptions import InvalidSignatureError
 from linebot.v3.messaging import (
@@ -11,8 +13,11 @@ from linebot.v3.messaging import (
     MessagingApi,
     ReplyMessageRequest,
     TextMessage,
+    AsyncMessagingApiBlob,
+    MessagingApiBlob,
 )
-from linebot.v3.webhooks import MessageEvent, TextMessageContent
+from linebot.v3.messaging.models import audio_message
+from linebot.v3.webhooks import ImageMessageContent, MessageEvent, TextMessageContent
 import aiohttp
 import dotenv
 import os
@@ -21,6 +26,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from uuid import uuid4
 import aiofiles
+from linebot.v3.webhooks.models import message_content
 
 
 dotenv.load_dotenv()
@@ -42,6 +48,7 @@ BASE_DIR = Path(__file__).resolve().parent
 STORAGE_PATH = Path(get_required_env("STORAGE_PATH"))
 OPEN_WEBUI_URL = get_required_env("OPEN_WEBUI_URL").rstrip("/")
 HTTPS_URL = get_required_env("HTTPS_URL").rstrip("/")
+OPEN_WEBUI_API_KEY = get_required_env("OPEN_WEBUI_API_KEY")
 
 if not STORAGE_PATH.is_absolute():
     STORAGE_PATH = BASE_DIR / STORAGE_PATH
@@ -51,7 +58,7 @@ with open("config.json", "r") as f:
     app.logger.debug(config)
 
 
-@app.route("/files/<id>")
+@app.route("/files/<id>", methods=["GET"])
 def files(id: str):
     path = Path(STORAGE_PATH) / f"{id}.png"
     if not path.exists():
@@ -80,10 +87,26 @@ def callback():
     return "OK"
 
 
+@handler.add(MessageEvent, message=ImageMessageContent)
+def handle_image_message(event):
+    with ApiClient(configuration) as api_client:
+        messaging_api = MessagingApiBlob(api_client)
+        line_bot_api = MessagingApi(api_client)
+        id = event.message.id
+        message_content = messaging_api.get_message_content(id)
+        id = asyncio.run(upload_file_data_to_open_webui(message_content))
+        messages = [TextMessage(text=id)]
+        line_bot_api.reply_message_with_http_info(
+            ReplyMessageRequest(replyToken=event.reply_token, messages=messages)
+        )
+
+
 @handler.add(MessageEvent, message=TextMessageContent)
 def handle_message(event):
+    print(event)
+    print(json.dumps(event))
     with ApiClient(configuration) as api_client:
-        line_bot_api = MessagingApi(api_client)
+        line_bot_api = MessagingApi(configuration)
         replies = asyncio.run(retreive_reply_from_open_webui(event.message.text))
         messages = []
 
@@ -147,6 +170,25 @@ class ReplyType(Enum):
 class Reply:
     type: ReplyType
     content: str
+
+
+async def upload_file_data_to_open_webui(data: bytearray) -> str:
+    url = OPEN_WEBUI_URL + "/api/v1/files/"
+    async with aiohttp.ClientSession() as session:
+        headers = {
+            "Authorization": f"Bearer {OPEN_WEBUI_API_KEY}",
+            "Accept": "application/json",
+        }
+        files = {"file": data}
+        form = aiohttp.FormData()
+        form.add_field(
+            name="file",
+            value=data,
+            content_type="application/octet-stream",
+        )
+        async with session.post(url, headers=headers, data=form) as response:
+            res = await response.json()
+            return res["id"]
 
 
 async def download_image_from_open_webui(url: str) -> str:

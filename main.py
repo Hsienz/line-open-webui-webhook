@@ -47,10 +47,31 @@ def get_required_env(key: str) -> str:
     return ret
 
 
+@dataclass
+class Cache:
+    file_id: str | None = None
+    knowledge_id: str | None = None
+
+
+class UserCache:
+    user_cache: dict[str, Cache] = {}
+
+    def __init__(self) -> None:
+        self.user_cache: dict[str, Cache] = {}
+
+    def __getitem__(self, user_id: str, auto_init: bool = True) -> Cache:
+        if auto_init and user_id not in self.user_cache:
+            self.user_cache[user_id] = Cache()
+        return self.user_cache[user_id]
+
+    def __contains__(self, user_id: str) -> bool:
+        return user_id in self.user_cache
+
+
 configuration = Configuration(access_token=os.getenv("CHANNEL_ACCESS_TOKEN"))
 handler = WebhookHandler(os.getenv("CHANNEL_SECRET"))
 config = {}
-file_id_cache = {}
+user_cache = UserCache()
 BASE_DIR = Path(__file__).resolve().parent
 STORAGE_PATH = Path(get_required_env("STORAGE_PATH"))
 OPEN_WEBUI_URL = get_required_env("OPEN_WEBUI_URL").rstrip("/")
@@ -102,11 +123,15 @@ def handle_all_file(event):
         message_content = messaging_api.get_message_content(file_id)
         file_id = asyncio.run(upload_file_data_to_open_webui(message_content))
         user_id = event.source.user_id
-        messages = [TextMessage(text=file_id)]
+        messages = [TextMessage(text=file_id, quickReply=None, quoteToken=None)]
         line_bot_api.reply_message_with_http_info(
-            ReplyMessageRequest(replyToken=event.reply_token, messages=messages)
+            ReplyMessageRequest(
+                replyToken=event.reply_token,
+                messages=messages,
+                notificationDisabled=None,
+            )
         )
-        file_id_cache[user_id] = file_id
+        user_cache[user_id].file_id = file_id
 
 
 @handler.add(MessageEvent, message=ImageMessageContent)
@@ -134,16 +159,21 @@ def handle_message(event):
                 local_url = asyncio.run(download_image_from_open_webui(reply.content))
                 messages.append(
                     ImageMessage(
-                        originalContentUrl=local_url, previewImageUrl=local_url
+                        originalContentUrl=local_url,
+                        previewImageUrl=local_url,
+                        quickReply=None,
                     )
                 )
             elif reply.type == ReplyType.Text:
-                messages.append(TextMessage(text=reply.content))
+                messages.append(
+                    TextMessage(text=reply.content, quickReply=None, quoteToken=None)
+                )
 
         line_bot_api.reply_message_with_http_info(
             ReplyMessageRequest(
-                reply_token=event.reply_token,
+                replyToken=event.reply_token,
                 messages=messages,
+                notificationDisabled=False,
             )
         )
 
@@ -266,7 +296,7 @@ async def retreive_reply_from_open_webui(user_id: str, text: str) -> list[Reply]
         url = OPEN_WEBUI_URL + "/api/chat/completions"
 
         if helpers.get("file_status"):
-            file_id = file_id_cache.get(user_id)
+            file_id = user_cache[user_id].file_id
             if file_id:
                 url = OPEN_WEBUI_URL + f"/api/v1/files/{file_id}/process/status"
                 params = {"stream": "false"}
@@ -287,9 +317,10 @@ async def retreive_reply_from_open_webui(user_id: str, text: str) -> list[Reply]
             data["prompt"] = text
         else:
             if helpers.get("chat_with_file"):
-                if user_id in file_id_cache and file_id_cache.get(user_id):
-                    print(f"chat with file_id: {file_id_cache.get(user_id)}")
-                    data["files"] = [{"type": "file", "id": file_id_cache.get(user_id)}]
+                if user_id in user_cache:
+                    file_id = user_cache[user_id].file_id
+                    print(f"chat with file_id: {file_id}")
+                    data["files"] = [{"type": "file", "id": file_id}]
 
         async with session.post(url, headers=headers, json=data) as response:
             data = await response.json()

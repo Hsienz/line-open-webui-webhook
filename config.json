@@ -14,9 +14,23 @@
           "file chat",
           "使用檔案聊天",
           "使用檔案",
-          "使用",
           "檔案聊天",
           "檔案"
+        ],
+        "enable": true,
+        "default": false
+      },
+      "chat_with_knowledge": {
+        "triggers": [
+          "chat_with_knowledge",
+          "chat-with-knowledge",
+          "chat with knowledge",
+          "knowledge_chat",
+          "knowledge chat",
+          "使用知識庫聊天",
+          "使用知識庫",
+          "知識庫聊天",
+          "知識庫"
         ],
         "enable": true,
         "default": false

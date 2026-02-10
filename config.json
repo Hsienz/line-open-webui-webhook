@@ -2,7 +2,7 @@
   "knowledges": {
     "prefix": "#"
   },
-  "helper": {
+  "helpers": {
     "prefix": "/",
     "type": {
       "chat_with_file": {
@@ -17,7 +17,22 @@
           "使用",
           "檔案聊天",
           "檔案"
-        ]
+        ],
+        "enable": true,
+        "default": false
+      },
+      "file_status": {
+        "triggers": [
+          "file_status",
+          "file status",
+          "status",
+          "檔案狀況",
+          "檔案進度",
+          "狀況",
+          "進度"
+        ],
+        "enable": true,
+        "default": false
       }
     }
   },

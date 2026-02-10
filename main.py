@@ -1,6 +1,7 @@
 import asyncio
 from enum import Enum, auto
 from io import BytesIO
+from deprecated import params
 from flask import Flask, request, abort, send_file
 
 from linebot import LineBotApi
@@ -17,7 +18,12 @@ from linebot.v3.messaging import (
     MessagingApiBlob,
 )
 from linebot.v3.messaging.models import audio_message
-from linebot.v3.webhooks import ImageMessageContent, MessageEvent, TextMessageContent
+from linebot.v3.webhooks import (
+    FileMessageContent,
+    ImageMessageContent,
+    MessageEvent,
+    TextMessageContent,
+)
 import aiohttp
 import dotenv
 import os
@@ -88,8 +94,7 @@ def callback():
     return "OK"
 
 
-@handler.add(MessageEvent, message=ImageMessageContent)
-def handle_image_message(event):
+def handle_all_file(event):
     with ApiClient(configuration) as api_client:
         messaging_api = MessagingApiBlob(api_client)
         line_bot_api = MessagingApi(api_client)
@@ -97,7 +102,6 @@ def handle_image_message(event):
         message_content = messaging_api.get_message_content(file_id)
         file_id = asyncio.run(upload_file_data_to_open_webui(message_content))
         user_id = event.source.user_id
-        print(user_id)
         messages = [TextMessage(text=file_id)]
         line_bot_api.reply_message_with_http_info(
             ReplyMessageRequest(replyToken=event.reply_token, messages=messages)
@@ -105,13 +109,24 @@ def handle_image_message(event):
         file_id_cache[user_id] = file_id
 
 
+@handler.add(MessageEvent, message=ImageMessageContent)
+def handle_image_message(event):
+    handle_all_file(event)
+
+
+@handler.add(MessageEvent, message=FileMessageContent)
+def handle_file_message(event):
+    handle_all_file(event)
+
+
 @handler.add(MessageEvent, message=TextMessageContent)
 def handle_message(event):
-    print(event)
-    print(json.dumps(event))
     with ApiClient(configuration) as api_client:
-        line_bot_api = MessagingApi(configuration)
-        replies = asyncio.run(retreive_reply_from_open_webui(event.message.text))
+        line_bot_api = MessagingApi(api_client)
+        user_id = event.source.user_id
+        replies = asyncio.run(
+            retreive_reply_from_open_webui(user_id, event.message.text)
+        )
         messages = []
 
         for reply in replies:
@@ -136,6 +151,7 @@ def handle_message(event):
 class ExtractType(Enum):
     Features = "features"
     TaskIds = "task_ids"
+    Helpers = "helpers"
 
 
 def extract(text: str, type: ExtractType):
@@ -146,7 +162,7 @@ def extract(text: str, type: ExtractType):
             ret[k] = True
 
         for y in v.get("triggers", []):
-            target = f"{v.get('prefix', '/')}{y} "
+            target = f"{v.get('prefix', '/')}{y}"
             if text.find(target) != -1:
                 text = text.replace(target, "")
                 ret[k] = True
@@ -163,6 +179,10 @@ def extract_features(text: str) -> tuple[str, dict]:
 
 def extract_tool_ids(text: str) -> tuple[str, dict]:
     return extract(text, ExtractType.TaskIds)
+
+
+def extract_helpers(text: str) -> tuple[str, dict]:
+    return extract(text, ExtractType.Helpers)
 
 
 class ReplyType(Enum):
@@ -192,6 +212,7 @@ async def upload_file_data_to_open_webui(data: bytearray) -> str:
         )
         async with session.post(url, headers=headers, data=form) as response:
             res = await response.json()
+            response.raise_for_status()
             return res["id"]
 
 
@@ -211,14 +232,17 @@ async def download_image_from_open_webui(url: str) -> str:
         async with session.get(url, headers=headers) as response:
             async with aiofiles.open(file_path, "wb") as f:
                 await f.write(await response.read())
+                response.raise_for_status()
 
     return https_url
 
 
-async def retreive_reply_from_open_webui(text: str) -> list[Reply]:
+async def retreive_reply_from_open_webui(user_id: str, text: str) -> list[Reply]:
     async with aiohttp.ClientSession() as session:
         (text, features) = extract_features(text)
         (text, tool_ids) = extract_tool_ids(text)
+        (text, helpers) = extract_helpers(text)
+        print(helpers)
 
         is_image_generation = features.get("image_generation", False)
 
@@ -241,9 +265,31 @@ async def retreive_reply_from_open_webui(text: str) -> list[Reply]:
 
         url = OPEN_WEBUI_URL + "/api/chat/completions"
 
+        if helpers.get("file_status"):
+            file_id = file_id_cache.get(user_id)
+            if file_id:
+                url = OPEN_WEBUI_URL + f"/api/v1/files/{file_id}/process/status"
+                params = {"stream": "false"}
+                async with session.get(url, headers=headers, params=params) as response:
+                    res = await response.json()
+                    response.raise_for_status()
+                    return [Reply(type=ReplyType.Text, content=res["status"])]
+            else:
+                return [
+                    Reply(
+                        ReplyType.Text,
+                        content="do not have file cache, please upload a file first",
+                    )
+                ]
+
         if is_image_generation:
             url = OPEN_WEBUI_URL + "/api/v1/images/generations"
             data["prompt"] = text
+        else:
+            if helpers.get("chat_with_file"):
+                if user_id in file_id_cache and file_id_cache.get(user_id):
+                    print(f"chat with file_id: {file_id_cache.get(user_id)}")
+                    data["files"] = [{"type": "file", "id": file_id_cache.get(user_id)}]
 
         async with session.post(url, headers=headers, json=data) as response:
             data = await response.json()

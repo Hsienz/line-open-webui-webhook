@@ -409,10 +409,6 @@ async def get_file_status_in_open_webui(file_id: str) -> str:
 
 
 async def add_file_to_knowledge(file_id: str, knowledge_id: str) -> bool:
-    headers = {
-        "Authorization": f"Bearer {OPEN_WEBUI_API_KEY}",
-        "Content-Type": "application/json",
-    }
     async with aiohttp.ClientSession() as session:
         url = OPEN_WEBUI_KNOWLEDGE_API + f"/{knowledge_id}/file/add"
         headers = {

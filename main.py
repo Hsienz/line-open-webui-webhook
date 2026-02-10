@@ -50,7 +50,7 @@ def get_required_env(key: str) -> str:
 @dataclass
 class Cache:
     file_id: str | None = None
-    knowledge_id: str | None = None
+    collection_id: str | None = None
 
 
 class UserCache:
@@ -75,6 +75,7 @@ user_cache = UserCache()
 BASE_DIR = Path(__file__).resolve().parent
 STORAGE_PATH = Path(get_required_env("STORAGE_PATH"))
 OPEN_WEBUI_URL = get_required_env("OPEN_WEBUI_URL").rstrip("/")
+OPEN_WEBUI_KNOWLEDGE_API = OPEN_WEBUI_URL + "/api/v1/knowledge"
 HTTPS_URL = get_required_env("HTTPS_URL").rstrip("/")
 OPEN_WEBUI_API_KEY = get_required_env("OPEN_WEBUI_API_KEY")
 
@@ -233,7 +234,6 @@ async def upload_file_data_to_open_webui(data: bytearray) -> str:
             "Authorization": f"Bearer {OPEN_WEBUI_API_KEY}",
             "Accept": "application/json",
         }
-        files = {"file": data}
         form = aiohttp.FormData()
         form.add_field(
             name="file",
@@ -295,19 +295,42 @@ async def retreive_reply_from_open_webui(user_id: str, text: str) -> list[Reply]
 
         url = OPEN_WEBUI_URL + "/api/chat/completions"
 
-        if helpers.get("file_status"):
+        if helpers.get("create_knowledge"):
+            id = await create_knowledge_in_open_webui(user_id)
+            user_cache[user_id].collection_id = id
+            return [Reply(type=ReplyType.Text, content=f"knowledge created: {id}")]
+        elif helpers.get("add_file_to_knowledge"):
+            file_id = user_cache[user_id].file_id
+            if not file_id:
+                return [Reply(type=ReplyType.Text, content="file_id cache not set")]
+            collection_id = user_cache[user_id].collection_id
+            if not collection_id:
+                return [
+                    Reply(type=ReplyType.Text, content="collection_id cache not set")
+                ]
+            ok = await add_file_to_knowledge(file_id, collection_id)
+            if ok:
+                return [
+                    Reply(
+                        type=ReplyType.Text,
+                        content=f"added file {file_id} into {collection_id}",
+                    )
+                ]
+            else:
+                return [Reply(type=ReplyType.Text, content="failed")]
+        elif helpers.get("file_status"):
             file_id = user_cache[user_id].file_id
             if file_id:
-                url = OPEN_WEBUI_URL + f"/api/v1/files/{file_id}/process/status"
-                params = {"stream": "false"}
-                async with session.get(url, headers=headers, params=params) as response:
-                    res = await response.json()
-                    response.raise_for_status()
-                    return [Reply(type=ReplyType.Text, content=res["status"])]
+                return [
+                    Reply(
+                        type=ReplyType.Text,
+                        content=await get_file_status_in_open_webui(file_id),
+                    )
+                ]
             else:
                 return [
                     Reply(
-                        ReplyType.Text,
+                        type=ReplyType.Text,
                         content="do not have file cache, please upload a file first",
                     )
                 ]
@@ -321,6 +344,26 @@ async def retreive_reply_from_open_webui(user_id: str, text: str) -> list[Reply]
                     file_id = user_cache[user_id].file_id
                     print(f"chat with file_id: {file_id}")
                     data["files"] = [{"type": "file", "id": file_id}]
+                else:
+                    return [
+                        Reply(
+                            type=ReplyType.Text,
+                            content="no file_id cache, please update file or use file first",
+                        )
+                    ]
+
+            if helpers.get("chat_with_collection"):
+                if user_id in user_cache:
+                    collection_id = user_cache[user_id].collection_id
+                    print(f"chat with collection_id {collection_id}")
+                    data["collections"] = [{"tpye": "collection", "id": collection_id}]
+                else:
+                    return [
+                        Reply(
+                            type=ReplyType.Text,
+                            content="no collection_id cache, please create knowledge or use knowledge first",
+                        )
+                    ]
 
         async with session.post(url, headers=headers, json=data) as response:
             data = await response.json()
@@ -333,6 +376,55 @@ async def retreive_reply_from_open_webui(user_id: str, text: str) -> list[Reply]
                         content=data["choices"][0]["message"]["content"],
                     )
                 ]
+
+
+async def create_knowledge_in_open_webui(user_id):
+    async with aiohttp.ClientSession() as session:
+        url = OPEN_WEBUI_KNOWLEDGE_API + "/create"
+        headers = {
+            "Authorization": f"Bearer {OPEN_WEBUI_API_KEY}",
+            "Content-Type": "application/json",
+        }
+
+        data = {"name": str(uuid4()), "description": f"created by line: {user_id}"}
+        async with session.post(url=url, headers=headers, json=data) as response:
+            res = await response.json()
+            print(res)
+            response.raise_for_status()
+            return res["id"]
+
+
+async def get_file_status_in_open_webui(file_id: str) -> str:
+    headers = {
+        "Authorization": f"Bearer {OPEN_WEBUI_API_KEY}",
+        "Content-Type": "application/json",
+    }
+    async with aiohttp.ClientSession() as session:
+        url = OPEN_WEBUI_URL + f"/api/v1/files/{file_id}/process/status"
+        params = {"stream": "false"}
+        async with session.get(url, headers=headers, params=params) as response:
+            res = await response.json()
+            response.raise_for_status()
+            return res["status"]
+
+
+async def add_file_to_knowledge(file_id: str, knowledge_id: str) -> bool:
+    headers = {
+        "Authorization": f"Bearer {OPEN_WEBUI_API_KEY}",
+        "Content-Type": "application/json",
+    }
+    async with aiohttp.ClientSession() as session:
+        url = OPEN_WEBUI_KNOWLEDGE_API + f"/{knowledge_id}/file/add"
+        headers = {
+            "Authorization": f"Bearer {OPEN_WEBUI_API_KEY}",
+            "Content-Type": "application/json",
+        }
+        data = {"file_id": file_id}
+        async with session.post(url=url, headers=headers, json=data) as response:
+            res = await response.json()
+            print(res)
+            response.raise_for_status()
+            return response.ok
 
 
 if __name__ == "__main__":

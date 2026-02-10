@@ -5,6 +5,23 @@
   "helpers": {
     "prefix": "/",
     "type": {
+      "add_file_to_knowledge": {
+        "triggers": [
+          "add_file_to_knowledge",
+          "add file to knowledge"
+        ]
+      },
+      "create_knowledge": {
+        "triggers": [
+          "create_knowledge",
+          "create knowledge",
+          "創建知識庫",
+          "創建新知識庫",
+          "新知識庫"
+        ],
+        "enable": true,
+        "default": false
+      },
       "chat_with_file": {
         "triggers": [
           "chat_with_file",
@@ -20,13 +37,18 @@
         "enable": true,
         "default": false
       },
-      "chat_with_knowledge": {
+      "chat_with_collection": {
         "triggers": [
           "chat_with_knowledge",
           "chat-with-knowledge",
           "chat with knowledge",
           "knowledge_chat",
           "knowledge chat",
+          "chat_with_collection",
+          "chat-with-collection",
+          "chat with collection",
+          "collection_chat",
+          "collection chat",
           "使用知識庫聊天",
           "使用知識庫",
           "知識庫聊天",

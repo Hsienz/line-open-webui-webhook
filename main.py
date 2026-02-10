@@ -395,12 +395,12 @@ async def create_knowledge_in_open_webui(user_id):
 
 
 async def get_file_status_in_open_webui(file_id: str) -> str:
-    headers = {
-        "Authorization": f"Bearer {OPEN_WEBUI_API_KEY}",
-        "Content-Type": "application/json",
-    }
     async with aiohttp.ClientSession() as session:
         url = OPEN_WEBUI_URL + f"/api/v1/files/{file_id}/process/status"
+        headers = {
+            "Authorization": f"Bearer {OPEN_WEBUI_API_KEY}",
+            "Content-Type": "application/json",
+        }
         params = {"stream": "false"}
         async with session.get(url, headers=headers, params=params) as response:
             res = await response.json()

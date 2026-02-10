@@ -1,0 +1,42 @@
+{
+  "features": {
+    "prefix": "/",
+    "type": {
+      "web_search": {
+        "triggers": [
+          "web_search",
+          "web search",
+          "web",
+          "search",
+          "web-search",
+          "搜尋",
+          "搜索",
+          "網頁搜尋",
+          "網頁搜索"
+        ],
+        "enable": true,
+        "default": false
+      },
+      "image_generation": {
+        "triggers": [
+          "image",
+          "generate_image",
+          "generate-image",
+          "image_generate",
+          "image_generation",
+          "image-generate",
+          "image-generation",
+          "生成圖片",
+          "生成圖像",
+          "畫圖",
+          "AI畫圖"
+        ],
+        "enable": true,
+        "default": false
+      }
+    }
+  },
+  "tool_ids": {
+    "prefix": "/"
+  }
+}

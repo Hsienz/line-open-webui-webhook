@@ -44,6 +44,7 @@ def get_required_env(key: str) -> str:
 configuration = Configuration(access_token=os.getenv("CHANNEL_ACCESS_TOKEN"))
 handler = WebhookHandler(os.getenv("CHANNEL_SECRET"))
 config = {}
+file_id_cache = {}
 BASE_DIR = Path(__file__).resolve().parent
 STORAGE_PATH = Path(get_required_env("STORAGE_PATH"))
 OPEN_WEBUI_URL = get_required_env("OPEN_WEBUI_URL").rstrip("/")
@@ -92,13 +93,16 @@ def handle_image_message(event):
     with ApiClient(configuration) as api_client:
         messaging_api = MessagingApiBlob(api_client)
         line_bot_api = MessagingApi(api_client)
-        id = event.message.id
-        message_content = messaging_api.get_message_content(id)
-        id = asyncio.run(upload_file_data_to_open_webui(message_content))
-        messages = [TextMessage(text=id)]
+        file_id = event.message.id
+        message_content = messaging_api.get_message_content(file_id)
+        file_id = asyncio.run(upload_file_data_to_open_webui(message_content))
+        user_id = event.source.user_id
+        print(user_id)
+        messages = [TextMessage(text=file_id)]
         line_bot_api.reply_message_with_http_info(
             ReplyMessageRequest(replyToken=event.reply_token, messages=messages)
         )
+        file_id_cache[user_id] = file_id
 
 
 @handler.add(MessageEvent, message=TextMessageContent)

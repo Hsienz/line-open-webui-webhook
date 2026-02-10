@@ -2,6 +2,25 @@
   "knowledges": {
     "prefix": "#"
   },
+  "helper": {
+    "prefix": "/",
+    "type": {
+      "chat_with_file": {
+        "triggers": [
+          "chat_with_file",
+          "chat-with-file",
+          "chat with file",
+          "file_chat",
+          "file chat",
+          "使用檔案聊天",
+          "使用檔案",
+          "使用",
+          "檔案聊天",
+          "檔案"
+        ]
+      }
+    }
+  },
   "features": {
     "prefix": "/",
     "type": {

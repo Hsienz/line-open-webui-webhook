@@ -52,6 +52,10 @@ class SelectionElement:
     id: str
     name: str
 
+    @staticmethod
+    def format_list(items: list["SelectionElement"]) -> str:
+        return "\n".join([f"<{i}>-{x.name}" for i, x in enumerate(items)])
+
 
 class SelectionType(Enum):
     Knowledges = auto()
@@ -64,6 +68,15 @@ class Cache:
     collection_id: str | None = None
     selection_list: list[SelectionElement] = field(default_factory=list)
     selection_list_type: SelectionType | None = None
+
+    def __str__(self) -> str:
+        return f"""
+            using knowledge id: {self.collection_id}
+            using file id: {self.file_id}
+            ========
+            selection type: {self.selection_list_type}
+            selection: {SelectionElement.format_list(self.selection_list)}
+        """
 
 
 class UserCache:
@@ -409,29 +422,19 @@ async def handle_non_main_event(user_id: str, helpers: dict) -> list[Reply] | No
             f"using knowledge id: {user_cache[user_id].collection_id}",
             f"using file id: {user_cache[user_id].file_id}",
         ]
-        return [Reply(type=ReplyType.Text, content="\n".join(tmp))]
+        return [Reply(type=ReplyType.Text, content=str(user_cache[user_id]))]
     elif helpers.get("list_knowledges") is not None:
         knowledges = await list_knowledges()
         user_cache[user_id].selection_list_type = SelectionType.Knowledges
         user_cache[user_id].selection_list = knowledges
         return [
-            Reply(
-                type=ReplyType.Text,
-                content="\n".join(
-                    [f"<{i}>.{x.name}" for i, x in enumerate(knowledges)]
-                ),
-            )
+            Reply(type=ReplyType.Text, content=SelectionElement.format_list(knowledges))
         ]
     elif helpers.get("list_files") is not None:
         files = await list_files()
         user_cache[user_id].selection_list_type = SelectionType.Files
         user_cache[user_id].selection_list = files
-        return [
-            Reply(
-                type=ReplyType.Text,
-                content="\n".join([f"<{i}>.{x.name}" for i, x in enumerate(files)]),
-            )
-        ]
+        return [Reply(type=ReplyType.Text, content=SelectionElement.format_list(files))]
     elif helpers.get("list_knowledge_files") is not None:
         knowledge_id = user_cache[user_id].collection_id
         if knowledge_id is None:
@@ -444,12 +447,7 @@ async def handle_non_main_event(user_id: str, helpers: dict) -> list[Reply] | No
         files = await list_knowledge_files(knowledge_id=knowledge_id)
         user_cache[user_id].selection_list_type = SelectionType.Files
         user_cache[user_id].selection_list = files
-        return [
-            Reply(
-                type=ReplyType.Text,
-                content="\n".join([f"<{i}>.{x.name}" for i, x in enumerate(files)]),
-            )
-        ]
+        return [Reply(type=ReplyType.Text, content=SelectionElement.format_list(files))]
     elif helpers.get("use_knowledge") is not None:
         number = int(helpers.get("use_knowledge", {}).get("number"))
         elem = await use_knowledge(user_id=user_id, no=number)

@@ -53,6 +53,7 @@
         "default": false
       },
       "chat_with_file": {
+        "postfix": " ",
         "triggers": [
           "chat_with_file",
           "chat-with-file",
@@ -68,6 +69,7 @@
         "default": false
       },
       "chat_with_collection": {
+        "postfix": " ",
         "triggers": [
           "chat_with_knowledge",
           "chat-with-knowledge",
@@ -88,6 +90,7 @@
         "default": false
       },
       "file_status": {
+        "postfix": "",
         "triggers": [
           "file_status",
           "file status",
@@ -106,6 +109,7 @@
     "prefix": "/",
     "type": {
       "web_search": {
+        "postfix": " ",
         "triggers": [
           "web_search",
           "web search",
@@ -121,6 +125,7 @@
         "default": false
       },
       "image_generation": {
+        "postfix": " ",
         "triggers": [
           "image",
           "generate_image",

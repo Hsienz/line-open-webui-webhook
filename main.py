@@ -81,7 +81,15 @@ class UserCache:
         return user_id in self.user_cache
 
 
-class ParamsNotSufficant(Exception):
+class ReplyException(Exception):
+    pass
+
+
+class ParamsNotSufficant(ReplyException):
+    pass
+
+
+class CacheException(Exception):
     pass
 
 
@@ -443,18 +451,18 @@ async def handle_non_main_event(user_id: str, helpers: dict) -> list[Reply] | No
             )
         ]
     elif helpers.get("use_knowledge") is not None:
-        knowledge_id = helpers.get("use_knowledge", {}).get("knowledge_id")
-        ok = await use_knowledge(user_id=user_id, knowledge_id=knowledge_id)
-        content = f"not found knowledge: {knowledge_id}"
-        if ok:
-            content = f"use knowledge: {knowledge_id}"
+        number = int(helpers.get("use_knowledge", {}).get("number"))
+        elem = await use_knowledge(user_id=user_id, no=number)
+        content = f"not found knowledge on: {number}"
+        if elem is not None:
+            content = f"use knowledge: <{number}>{elem.name}"
         return [Reply(type=ReplyType.Text, content=content)]
     elif helpers.get("use_file") is not None:
-        file_id = helpers.get("use_file", {}).get("file_id")
-        ok = await use_file(user_id=user_id, file_id=file_id)
-        content = f"not found file: {file_id}"
-        if ok:
-            content = f"use file: {file_id}"
+        number = int(helpers.get("use_file", {}).get("number"))
+        elem = await use_file(user_id=user_id, no=number)
+        content = f"not found file on: {number}"
+        if elem is not None:
+            content = f"use file: <{number}>{elem.name}"
         return [Reply(type=ReplyType.Text, content=content)]
     elif helpers.get("create_knowledge") is not None:
         id = await create_knowledge_in_open_webui(user_id)
@@ -579,7 +587,9 @@ async def list_knowledge_files(knowledge_id) -> list[SelectionElement]:
             res = await response.json()
             print(res)
             response.raise_for_status()
-            return [SelectionElement(id=x["id"], name=x["name"]) for x in res["items"]]
+            return [
+                SelectionElement(id=x["id"], name=x["filename"]) for x in res["items"]
+            ]
 
 
 async def if_knowledge_exist(knowledge_id) -> bool:
@@ -612,18 +622,32 @@ async def if_file_exist(file_id) -> bool:
             return True
 
 
-async def use_file(user_id, file_id) -> bool:
+async def use_file(user_id: str, no: int) -> SelectionElement | None:
+    cache = user_cache[user_id]
+    if cache.selection_list_type != SelectionType.Files:
+        raise CacheException(
+            f"expect cache {SelectionType.Files}, find {cache.selection_list_type}, send /list_files or /list_knowledge_files first"
+        )
+
+    file_id = cache.selection_list[no].id
     if await if_file_exist(file_id=file_id):
         user_cache[user_id].file_id = file_id
-        return True
-    return False
+        return cache.selection_list[no]
+    return None
 
 
-async def use_knowledge(user_id, knowledge_id) -> bool:
+async def use_knowledge(user_id, no) -> SelectionElement | None:
+    cache = user_cache[user_id]
+    if cache.selection_list_type != SelectionType.Knowledges:
+        raise CacheException(
+            f"expect cache {SelectionType.Knowledges}, find {cache.selection_list_type}, send /list_knowledges or /list_knowledge_knowledges first"
+        )
+
+    knowledge_id = cache.selection_list[no].id
     if await if_knowledge_exist(knowledge_id=knowledge_id):
         user_cache[user_id].collection_id = knowledge_id
-        return True
-    return False
+        return cache.selection_list[no]
+    return None
 
 
 if __name__ == "__main__":

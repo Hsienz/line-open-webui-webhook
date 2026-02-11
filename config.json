@@ -32,7 +32,7 @@
           "使用知識庫"
         ],
         "params": [
-          "knowledge_id"
+          "number"
         ],
         "enable": true
       },
@@ -45,7 +45,7 @@
           "使用檔案"
         ],
         "params": [
-          "file_id"
+          "number"
         ],
         "enable": true
       },

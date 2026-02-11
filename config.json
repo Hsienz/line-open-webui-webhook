@@ -10,16 +10,18 @@
         "triggers": [
           "info",
           "資訊"
-        ]
+        ],
+        "enable": true
       },
-      "list_knowledge": {
+      "list_knowledges": {
         "postfix": "",
         "triggers": [
-          "list_knowledge",
-          "list-knowledge",
-          "list knowledge",
+          "list_knowledges",
+          "list-knowledges",
+          "list knowledges",
           "列出知識庫"
-        ]
+        ],
+        "enable": true
       },
       "use_knowledge": {
         "postfix": " ",
@@ -31,14 +33,52 @@
         ],
         "params": [
           "knowledge_id"
-        ]
+        ],
+        "enable": true
+      },
+      "use_file": {
+        "postfix": " ",
+        "triggers": [
+          "use_file",
+          "use-file",
+          "use file",
+          "使用檔案"
+        ],
+        "params": [
+          "file_id"
+        ],
+        "enable": true
+      },
+      "list_files": {
+        "postfix": "",
+        "triggers": [
+          "list_files",
+          "list-files",
+          "list files",
+          "list_file",
+          "list-file",
+          "list file",
+          "列出檔案"
+        ],
+        "enable": true
+      },
+      "list_knowledge_files": {
+        "postfix": "",
+        "triggers": [
+          "list_knowledge_files",
+          "list-knowledge-files",
+          "list knowledge files",
+          "列出知識庫檔案"
+        ],
+        "enable": true
       },
       "add_file_to_knowledge": {
         "postfix": "",
         "triggers": [
           "add_file_to_knowledge",
           "add file to knowledge"
-        ]
+        ],
+        "enable": true
       },
       "create_knowledge": {
         "postfix": "",

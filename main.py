@@ -14,7 +14,6 @@ from linebot.v3.messaging import (
     MessagingApi,
     ReplyMessageRequest,
     TextMessage,
-    AsyncMessagingApiBlob,
     MessagingApiBlob,
 )
 from linebot.v3.messaging.models import audio_message
@@ -33,6 +32,7 @@ from pathlib import Path
 from uuid import uuid4
 import aiofiles
 from linebot.v3.webhooks.models import message_content
+from werkzeug.datastructures import headers
 
 
 dotenv.load_dotenv()
@@ -80,6 +80,7 @@ BASE_DIR = Path(__file__).resolve().parent
 STORAGE_PATH = Path(get_required_env("STORAGE_PATH"))
 OPEN_WEBUI_URL = get_required_env("OPEN_WEBUI_URL").rstrip("/")
 OPEN_WEBUI_KNOWLEDGE_API = OPEN_WEBUI_URL + "/api/v1/knowledge"
+OPEN_WEBUI_FILE_API = OPEN_WEBUI_URL + "/api/v1/files"
 HTTPS_URL = get_required_env("HTTPS_URL").rstrip("/")
 OPEN_WEBUI_API_KEY = get_required_env("OPEN_WEBUI_API_KEY")
 
@@ -128,7 +129,13 @@ def handle_all_file(event):
         message_content = messaging_api.get_message_content(file_id)
         file_id = asyncio.run(upload_file_data_to_open_webui(message_content))
         user_id = event.source.user_id
-        messages = [TextMessage(text=file_id, quickReply=None, quoteToken=None)]
+        messages = [
+            TextMessage(
+                text=f"{file_id}: is uploading.\nUse /file_status to check progress of the file.\nOnly use that file after it complete.",
+                quickReply=None,
+                quoteToken=None,
+            )
+        ]
         line_bot_api.reply_message_with_http_info(
             ReplyMessageRequest(
                 replyToken=event.reply_token,
@@ -323,8 +330,24 @@ async def retreive_reply_from_open_webui(user_id: str, text: str) -> list[Reply]
             if helpers.get("chat_with_file"):
                 if user_id in user_cache:
                     file_id = user_cache[user_id].file_id
-                    print(f"chat with file_id: {file_id}")
-                    data["files"] = [{"type": "file", "id": file_id}]
+                    if file_id is None:
+                        return [
+                            Reply(
+                                type=ReplyType.Text,
+                                content="there is no file set. use /list_files, /use_file or upload a file first",
+                            )
+                        ]
+                    status = await get_file_status_in_open_webui(file_id)
+                    if "complete" == status:
+                        print(f"chat with file_id: {file_id}")
+                        data["files"] = [{"type": "file", "id": file_id}]
+                    else:
+                        return [
+                            Reply(
+                                type=ReplyType.Text,
+                                content=f"{file_id} status is {status}. please try again after it become complete. get status using /file_status",
+                            ),
+                        ]
                 else:
                     return [
                         Reply(
@@ -366,16 +389,36 @@ async def handle_non_main_event(user_id: str, helpers: dict) -> list[Reply] | No
             f"using file id: {user_cache[user_id].file_id}",
         ]
         return [Reply(type=ReplyType.Text, content="\n".join(tmp))]
-    elif helpers.get("list_knowledge") is not None:
-        ids = await list_knowledge()
+    elif helpers.get("list_knowledges") is not None:
+        ids = await list_knowledges()
+        return [Reply(type=ReplyType.Text, content="\n".join(ids))]
+    elif helpers.get("list_files") is not None:
+        ids = await list_files()
+        return [Reply(type=ReplyType.Text, content="\n".join(ids))]
+    elif helpers.get("list_knowledge_files") is not None:
+        knowledge_id = user_cache[user_id].collection_id
+        if knowledge_id is None:
+            return [
+                Reply(
+                    type=ReplyType.Text,
+                    content="knowledge not set, please /create_knowledge or /use_knowledge first",
+                )
+            ]
+        ids = await list_knowledge_files(knowledge_id=knowledge_id)
         return [Reply(type=ReplyType.Text, content="\n".join(ids))]
     elif helpers.get("use_knowledge") is not None:
         knowledge_id = helpers.get("use_knowledge", {}).get("knowledge_id")
-        ok = await use_knowledge(knowledge_id=knowledge_id)
+        ok = await use_knowledge(user_id=user_id, knowledge_id=knowledge_id)
         content = f"not found knowledge: {knowledge_id}"
         if ok:
-            user_cache[user_id].collection_id = knowledge_id
             content = f"use knowledge: {knowledge_id}"
+        return [Reply(type=ReplyType.Text, content=content)]
+    elif helpers.get("use_file") is not None:
+        file_id = helpers.get("use_file", {}).get("file_id")
+        ok = await use_file(user_id=user_id, file_id=file_id)
+        content = f"not found file: {file_id}"
+        if ok:
+            content = f"use file: {file_id}"
         return [Reply(type=ReplyType.Text, content=content)]
     elif helpers.get("create_knowledge") is not None:
         id = await create_knowledge_in_open_webui(user_id)
@@ -461,8 +504,7 @@ async def add_file_to_knowledge(file_id: str, knowledge_id: str) -> bool:
             return response.ok
 
 
-async def list_knowledge() -> list[str]:
-    print("AAAA")
+async def list_knowledges() -> list[str]:
     async with aiohttp.ClientSession() as session:
         url = OPEN_WEBUI_KNOWLEDGE_API + "/"
         headers = {
@@ -471,12 +513,40 @@ async def list_knowledge() -> list[str]:
         }
         async with session.get(url, headers=headers) as response:
             res = await response.json()
+            response.raise_for_status()
+            return [x["id"] for x in res["items"]]
+
+
+async def list_files() -> list[str]:
+    async with aiohttp.ClientSession() as session:
+        url = OPEN_WEBUI_FILE_API + "/"
+        headers = {
+            "Authorization": f"Bearer {OPEN_WEBUI_API_KEY}",
+            "Content-Type": "application/json",
+        }
+        async with session.get(url, headers=headers) as response:
+            res = await response.json()
+            print(res)
+            response.raise_for_status()
+            return [x["id"] for x in res]
+
+
+async def list_knowledge_files(knowledge_id):
+    async with aiohttp.ClientSession() as session:
+        url = OPEN_WEBUI_KNOWLEDGE_API + f"/{knowledge_id}/files"
+        print(url)
+        headers = {
+            "Authorization": f"Bearer {OPEN_WEBUI_API_KEY}",
+            "Content-Type": "application/json",
+        }
+        async with session.get(url=url, headers=headers) as response:
+            res = await response.json()
             print(res)
             response.raise_for_status()
             return [x["id"] for x in res["items"]]
 
 
-async def use_knowledge(knowledge_id) -> bool:
+async def if_knowledge_exist(knowledge_id) -> bool:
     async with aiohttp.ClientSession() as session:
         url = OPEN_WEBUI_KNOWLEDGE_API + f"/{knowledge_id}"
         headers = {
@@ -484,9 +554,40 @@ async def use_knowledge(knowledge_id) -> bool:
             "Content-Type": "application/json",
         }
         async with session.get(url, headers=headers) as response:
-            res = await response.json()
-            # response.raise_for_status()
-            return response.ok
+            await response.json()
+            if response.status == 404:
+                return False
+            response.raise_for_status()
+            return True
+
+
+async def if_file_exist(file_id) -> bool:
+    async with aiohttp.ClientSession() as session:
+        url = OPEN_WEBUI_FILE_API + f"/{file_id}"
+        headers = {
+            "Authorization": f"Bearer {OPEN_WEBUI_API_KEY}",
+            "Content-Type": "application/json",
+        }
+        async with session.get(url, headers=headers) as response:
+            await response.json()
+            if response.status == 404:
+                return False
+            response.raise_for_status()
+            return True
+
+
+async def use_file(user_id, file_id) -> bool:
+    if await if_file_exist(file_id=file_id):
+        user_cache[user_id].file_id = file_id
+        return True
+    return False
+
+
+async def use_knowledge(user_id, knowledge_id) -> bool:
+    if await if_knowledge_exist(knowledge_id=knowledge_id):
+        user_cache[user_id].collection_id = knowledge_id
+        return True
+    return False
 
 
 if __name__ == "__main__":

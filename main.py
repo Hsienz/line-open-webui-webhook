@@ -27,7 +27,7 @@ import aiohttp
 import dotenv
 import os
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from uuid import uuid4
 import aiofiles
@@ -48,9 +48,22 @@ def get_required_env(key: str) -> str:
 
 
 @dataclass
+class SelectionElement:
+    id: str
+    name: str
+
+
+class SelectionType(Enum):
+    Knowledges = auto()
+    Files = auto()
+
+
+@dataclass
 class Cache:
     file_id: str | None = None
     collection_id: str | None = None
+    selection_list: list[SelectionElement] = field(default_factory=list)
+    selection_list_type: SelectionType | None = None
 
 
 class UserCache:
@@ -390,11 +403,27 @@ async def handle_non_main_event(user_id: str, helpers: dict) -> list[Reply] | No
         ]
         return [Reply(type=ReplyType.Text, content="\n".join(tmp))]
     elif helpers.get("list_knowledges") is not None:
-        ids = await list_knowledges()
-        return [Reply(type=ReplyType.Text, content="\n".join(ids))]
+        knowledges = await list_knowledges()
+        user_cache[user_id].selection_list_type = SelectionType.Knowledges
+        user_cache[user_id].selection_list = knowledges
+        return [
+            Reply(
+                type=ReplyType.Text,
+                content="\n".join(
+                    [f"<{i}>.{x.name}" for i, x in enumerate(knowledges)]
+                ),
+            )
+        ]
     elif helpers.get("list_files") is not None:
-        ids = await list_files()
-        return [Reply(type=ReplyType.Text, content="\n".join(ids))]
+        files = await list_files()
+        user_cache[user_id].selection_list_type = SelectionType.Files
+        user_cache[user_id].selection_list = files
+        return [
+            Reply(
+                type=ReplyType.Text,
+                content="\n".join([f"<{i}>.{x.name}" for i, x in enumerate(files)]),
+            )
+        ]
     elif helpers.get("list_knowledge_files") is not None:
         knowledge_id = user_cache[user_id].collection_id
         if knowledge_id is None:
@@ -404,8 +433,15 @@ async def handle_non_main_event(user_id: str, helpers: dict) -> list[Reply] | No
                     content="knowledge not set, please /create_knowledge or /use_knowledge first",
                 )
             ]
-        ids = await list_knowledge_files(knowledge_id=knowledge_id)
-        return [Reply(type=ReplyType.Text, content="\n".join(ids))]
+        files = await list_knowledge_files(knowledge_id=knowledge_id)
+        user_cache[user_id].selection_list_type = SelectionType.Files
+        user_cache[user_id].selection_list = files
+        return [
+            Reply(
+                type=ReplyType.Text,
+                content="\n".join([f"<{i}>.{x.name}" for i, x in enumerate(files)]),
+            )
+        ]
     elif helpers.get("use_knowledge") is not None:
         knowledge_id = helpers.get("use_knowledge", {}).get("knowledge_id")
         ok = await use_knowledge(user_id=user_id, knowledge_id=knowledge_id)
@@ -504,7 +540,7 @@ async def add_file_to_knowledge(file_id: str, knowledge_id: str) -> bool:
             return response.ok
 
 
-async def list_knowledges() -> list[str]:
+async def list_knowledges() -> list[SelectionElement]:
     async with aiohttp.ClientSession() as session:
         url = OPEN_WEBUI_KNOWLEDGE_API + "/"
         headers = {
@@ -514,10 +550,10 @@ async def list_knowledges() -> list[str]:
         async with session.get(url, headers=headers) as response:
             res = await response.json()
             response.raise_for_status()
-            return [x["id"] for x in res["items"]]
+            return [SelectionElement(id=x["id"], name=x["name"]) for x in res["items"]]
 
 
-async def list_files() -> list[str]:
+async def list_files() -> list[SelectionElement]:
     async with aiohttp.ClientSession() as session:
         url = OPEN_WEBUI_FILE_API + "/"
         headers = {
@@ -528,10 +564,10 @@ async def list_files() -> list[str]:
             res = await response.json()
             print(res)
             response.raise_for_status()
-            return [x["id"] for x in res]
+            return [SelectionElement(id=x["id"], name=x["name"]) for x in res]
 
 
-async def list_knowledge_files(knowledge_id):
+async def list_knowledge_files(knowledge_id) -> list[SelectionElement]:
     async with aiohttp.ClientSession() as session:
         url = OPEN_WEBUI_KNOWLEDGE_API + f"/{knowledge_id}/files"
         print(url)
@@ -543,7 +579,7 @@ async def list_knowledge_files(knowledge_id):
             res = await response.json()
             print(res)
             response.raise_for_status()
-            return [x["id"] for x in res["items"]]
+            return [SelectionElement(id=x["id"], name=x["name"]) for x in res["items"]]
 
 
 async def if_knowledge_exist(knowledge_id) -> bool:

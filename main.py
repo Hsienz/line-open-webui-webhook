@@ -71,12 +71,12 @@ class Cache:
 
     def __str__(self) -> str:
         return f"""
-            using knowledge id: {self.collection_id}
-            using file id: {self.file_id}
-            ========
-            selection type: {self.selection_list_type}
-            selection: {SelectionElement.format_list(self.selection_list)}
-        """
+using knowledge id: {self.collection_id}
+using file id: {self.file_id}
+========
+selection type: {self.selection_list_type}
+selection: {SelectionElement.format_list(self.selection_list)}
+        """.strip()
 
 
 class UserCache:
@@ -195,9 +195,14 @@ def handle_message(event):
     with ApiClient(configuration) as api_client:
         line_bot_api = MessagingApi(api_client)
         user_id = event.source.user_id
-        replies = asyncio.run(
-            retreive_reply_from_open_webui(user_id, event.message.text)
-        )
+        replies: list[Reply] = []
+        try:
+            replies = asyncio.run(
+                retreive_reply_from_open_webui(user_id, event.message.text)
+            )
+        except Exception as e:
+            replies = [Reply(type=ReplyType.Text, content=str(e))]
+
         messages = []
 
         for reply in replies:
@@ -244,8 +249,12 @@ def extract(text: str, type: ExtractType) -> tuple[str, dict]:
                 text = text.replace(target, "")
                 maybe_params = text[index:].split()
                 target_params = v.get("params", [])
+                print(target_params)
+                print(maybe_params)
                 if len(target_params) > len(maybe_params):
-                    raise ParamsNotSufficant
+                    raise ParamsNotSufficant(
+                        f"params not fulfill, expect {len(target_params)} params for \n{'\n'.join(target_params)},\nget on {len(maybe_params)} params"
+                    )
 
                 params = {}
                 for i, z in enumerate(target_params):

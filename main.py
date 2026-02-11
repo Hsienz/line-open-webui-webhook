@@ -289,7 +289,7 @@ async def retreive_reply_from_open_webui(user_id: str, text: str) -> list[Reply]
         (text, helpers) = extract_helpers(text)
         print(helpers)
 
-        is_image_generation = features.get("image_generation", False)
+        is_image_generation = features.get("image_generation") is not None
 
         api_key = get_required_env("OPEN_WEBUI_API_KEY")
         headers = {
@@ -333,7 +333,7 @@ async def retreive_reply_from_open_webui(user_id: str, text: str) -> list[Reply]
                         )
                     ]
 
-            if helpers.get("chat_with_collection"):
+            if helpers.get("chat_with_collection") is not None:
                 if user_id in user_cache:
                     collection_id = user_cache[user_id].collection_id
                     print(f"chat with collection_id {collection_id}")

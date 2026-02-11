@@ -5,13 +5,43 @@
   "helpers": {
     "prefix": "/",
     "type": {
+      "info": {
+        "postfix": "",
+        "triggers": [
+          "info",
+          "資訊"
+        ]
+      },
+      "list_knowledge": {
+        "postfix": "",
+        "triggers": [
+          "list_knowledge",
+          "list-knowledge",
+          "list knowledge",
+          "列出知識庫"
+        ]
+      },
+      "use_knowledge": {
+        "postfix": " ",
+        "triggers": [
+          "use_knowledge",
+          "use-knowledge",
+          "use knowledge",
+          "使用知識庫"
+        ],
+        "params": [
+          "knowledge_id"
+        ]
+      },
       "add_file_to_knowledge": {
+        "postfix": "",
         "triggers": [
           "add_file_to_knowledge",
           "add file to knowledge"
         ]
       },
       "create_knowledge": {
+        "postfix": "",
         "triggers": [
           "create_knowledge",
           "create knowledge",

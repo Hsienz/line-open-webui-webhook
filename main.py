@@ -68,6 +68,10 @@ class UserCache:
         return user_id in self.user_cache
 
 
+class ParamsNotSufficant(Exception):
+    pass
+
+
 configuration = Configuration(access_token=os.getenv("CHANNEL_ACCESS_TOKEN"))
 handler = WebhookHandler(os.getenv("CHANNEL_SECRET"))
 config = {}
@@ -185,18 +189,29 @@ class ExtractType(Enum):
     Helpers = "helpers"
 
 
-def extract(text: str, type: ExtractType):
+def extract(text: str, type: ExtractType) -> tuple[str, dict]:
     ret = {}
     type_dict = config.get(type.value, {})
     for k, v in type_dict.get("type", {}).items():
-        if v.get("default", False):
-            ret[k] = True
+        if v.get("default", False) and not v.get("params", []):
+            ret[k] = {}
 
         for y in v.get("triggers", []):
-            target = f"{v.get('prefix', '/')}{y}"
-            if text.find(target) != -1:
+            target = f"{type_dict.get('prefix', '/')}{y}{v.get('postfix', ' ')}"
+            index = text.find(target)
+            if index != -1:
                 text = text.replace(target, "")
-                ret[k] = True
+                maybe_params = text[index:].split()
+                target_params = v.get("params", [])
+                if len(target_params) > len(maybe_params):
+                    raise ParamsNotSufficant
+
+                params = {}
+                for i, z in enumerate(target_params):
+                    params[z] = maybe_params[i]
+                    text = text[:index] + text[index:].lstrip()[len(maybe_params[i]) :]
+
+                ret[k] = params
 
         if not v.get("enable", True) and k in ret:
             del ret[k]
@@ -295,46 +310,12 @@ async def retreive_reply_from_open_webui(user_id: str, text: str) -> list[Reply]
 
         url = OPEN_WEBUI_URL + "/api/chat/completions"
 
-        if helpers.get("create_knowledge"):
-            id = await create_knowledge_in_open_webui(user_id)
-            user_cache[user_id].collection_id = id
-            return [Reply(type=ReplyType.Text, content=f"knowledge created: {id}")]
-        elif helpers.get("add_file_to_knowledge"):
-            file_id = user_cache[user_id].file_id
-            if not file_id:
-                return [Reply(type=ReplyType.Text, content="file_id cache not set")]
-            collection_id = user_cache[user_id].collection_id
-            if not collection_id:
-                return [
-                    Reply(type=ReplyType.Text, content="collection_id cache not set")
-                ]
-            ok = await add_file_to_knowledge(file_id, collection_id)
-            if ok:
-                return [
-                    Reply(
-                        type=ReplyType.Text,
-                        content=f"added file {file_id} into {collection_id}",
-                    )
-                ]
-            else:
-                return [Reply(type=ReplyType.Text, content="failed")]
-        elif helpers.get("file_status"):
-            file_id = user_cache[user_id].file_id
-            if file_id:
-                return [
-                    Reply(
-                        type=ReplyType.Text,
-                        content=await get_file_status_in_open_webui(file_id),
-                    )
-                ]
-            else:
-                return [
-                    Reply(
-                        type=ReplyType.Text,
-                        content="do not have file cache, please upload a file first",
-                    )
-                ]
+        # if this evnet do not need to chat, just handle reply hardcode reply from webui api
+        res = await handle_non_main_event(user_id=user_id, helpers=helpers)
+        if res is not None:
+            return res
 
+        # below is the process for real chat to llm
         if is_image_generation:
             url = OPEN_WEBUI_URL + "/api/v1/images/generations"
             data["prompt"] = text
@@ -376,6 +357,63 @@ async def retreive_reply_from_open_webui(user_id: str, text: str) -> list[Reply]
                         content=data["choices"][0]["message"]["content"],
                     )
                 ]
+
+
+async def handle_non_main_event(user_id: str, helpers: dict) -> list[Reply] | None:
+    if helpers.get("info") is not None:
+        tmp = [
+            f"using knowledge id: {user_cache[user_id].collection_id}",
+            f"using file id: {user_cache[user_id].file_id}",
+        ]
+        return [Reply(type=ReplyType.Text, content="\n".join(tmp))]
+    elif helpers.get("list_knowledge") is not None:
+        ids = await list_knowledge()
+        return [Reply(type=ReplyType.Text, content="\n".join(ids))]
+    elif helpers.get("use_knowledge") is not None:
+        knowledge_id = helpers.get("use_knowledge", {}).get("knowledge_id")
+        ok = await use_knowledge(knowledge_id=knowledge_id)
+        content = f"not found knowledge: {knowledge_id}"
+        if ok:
+            user_cache[user_id].collection_id = knowledge_id
+            content = f"use knowledge: {knowledge_id}"
+        return [Reply(type=ReplyType.Text, content=content)]
+    elif helpers.get("create_knowledge") is not None:
+        id = await create_knowledge_in_open_webui(user_id)
+        user_cache[user_id].collection_id = id
+        return [Reply(type=ReplyType.Text, content=f"knowledge created: {id}")]
+    elif helpers.get("add_file_to_knowledge") is not None:
+        file_id = user_cache[user_id].file_id
+        if not file_id:
+            return [Reply(type=ReplyType.Text, content="file_id cache not set")]
+        collection_id = user_cache[user_id].collection_id
+        if not collection_id:
+            return [Reply(type=ReplyType.Text, content="collection_id cache not set")]
+        ok = await add_file_to_knowledge(file_id, collection_id)
+        if ok:
+            return [
+                Reply(
+                    type=ReplyType.Text,
+                    content=f"added file {file_id} into {collection_id}",
+                )
+            ]
+        else:
+            return [Reply(type=ReplyType.Text, content="failed")]
+    elif helpers.get("file_status") is not None:
+        file_id = user_cache[user_id].file_id
+        if file_id:
+            return [
+                Reply(
+                    type=ReplyType.Text,
+                    content=await get_file_status_in_open_webui(file_id),
+                )
+            ]
+        else:
+            return [
+                Reply(
+                    type=ReplyType.Text,
+                    content="do not have file cache, please upload a file first",
+                )
+            ]
 
 
 async def create_knowledge_in_open_webui(user_id):
@@ -420,6 +458,34 @@ async def add_file_to_knowledge(file_id: str, knowledge_id: str) -> bool:
             res = await response.json()
             print(res)
             response.raise_for_status()
+            return response.ok
+
+
+async def list_knowledge() -> list[str]:
+    print("AAAA")
+    async with aiohttp.ClientSession() as session:
+        url = OPEN_WEBUI_KNOWLEDGE_API + "/"
+        headers = {
+            "Authorization": f"Bearer {OPEN_WEBUI_API_KEY}",
+            "Content-Type": "application/json",
+        }
+        async with session.get(url, headers=headers) as response:
+            res = await response.json()
+            print(res)
+            response.raise_for_status()
+            return [x["id"] for x in res["items"]]
+
+
+async def use_knowledge(knowledge_id) -> bool:
+    async with aiohttp.ClientSession() as session:
+        url = OPEN_WEBUI_KNOWLEDGE_API + f"/{knowledge_id}"
+        headers = {
+            "Authorization": f"Bearer {OPEN_WEBUI_API_KEY}",
+            "Content-Type": "application/json",
+        }
+        async with session.get(url, headers=headers) as response:
+            res = await response.json()
+            # response.raise_for_status()
             return response.ok
 
 

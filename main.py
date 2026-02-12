@@ -68,6 +68,7 @@ class Cache:
     collection_id: str | None = None
     selection_list: list[SelectionElement] = field(default_factory=list)
     selection_list_type: SelectionType | None = None
+    history: list = field(default_factory=list)
 
     def __str__(self) -> str:
         return f"""
@@ -196,11 +197,20 @@ def handle_message(event):
         line_bot_api = MessagingApi(api_client)
         user_id = event.source.user_id
         replies: list[Reply] = []
+        text = event.message.text
+        (text, features) = extract_features(text)
+        (text, tool_ids) = extract_tool_ids(text)
+        (text, helpers) = extract_helpers(text)
+        is_error = False
         try:
             replies = asyncio.run(
-                retreive_reply_from_open_webui(user_id, event.message.text)
+                retreive_reply_from_open_webui(
+                    user_id, text, features=features, tool_ids=tool_ids, helpers=helpers
+                )
             )
+            user_cache[user_id].history.append({"role": "user", "content": text})
         except Exception as e:
+            is_error = True
             replies = [Reply(type=ReplyType.Text, content=str(e))]
 
         messages = []
@@ -219,6 +229,10 @@ def handle_message(event):
                 messages.append(
                     TextMessage(text=reply.content, quickReply=None, quoteToken=None)
                 )
+                if not is_error:
+                    user_cache[user_id].history.append(
+                        {"role": "assistant", "content": reply.content}
+                    )
 
         line_bot_api.reply_message_with_http_info(
             ReplyMessageRequest(
@@ -332,13 +346,10 @@ async def download_image_from_open_webui(url: str) -> str:
     return https_url
 
 
-async def retreive_reply_from_open_webui(user_id: str, text: str) -> list[Reply]:
+async def retreive_reply_from_open_webui(
+    user_id: str, text: str, features: dict, tool_ids: dict, helpers: dict
+) -> list[Reply]:
     async with aiohttp.ClientSession() as session:
-        (text, features) = extract_features(text)
-        (text, tool_ids) = extract_tool_ids(text)
-        (text, helpers) = extract_helpers(text)
-        print(helpers)
-
         is_image_generation = features.get("image_generation") is not None
 
         api_key = get_required_env("OPEN_WEBUI_API_KEY")
@@ -347,10 +358,12 @@ async def retreive_reply_from_open_webui(user_id: str, text: str) -> list[Reply]
             "Content-Type": "application/json",
         }
 
+        history = user_cache[user_id].history
         data = {
             "model": get_required_env("OPEN_WEBUI_MODEL"),
             "messages": [
                 {"role": "system", "content": get_required_env("OPEN_WEBUI_PROMPT")},
+                *history,
                 {"role": "user", "content": text},
             ],
             "tool_ids": tool_ids,

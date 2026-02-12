@@ -5,6 +5,15 @@
   "helpers": {
     "prefix": "/",
     "type": {
+      "reset_memory": {
+        "postfix": "",
+        "triggers": [
+          "reset_memory",
+          "reset-memory",
+          "reset memory",
+          "重置記憶"
+        ]
+      },
       "info": {
         "postfix": "",
         "triggers": [

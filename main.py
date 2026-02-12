@@ -1,10 +1,7 @@
 import asyncio
 from enum import Enum, auto
-from io import BytesIO
-from deprecated import params
 from flask import Flask, request, abort, send_file
 
-from linebot import LineBotApi
 from linebot.v3 import WebhookHandler
 from linebot.v3.exceptions import InvalidSignatureError
 from linebot.v3.messaging import (
@@ -16,7 +13,6 @@ from linebot.v3.messaging import (
     TextMessage,
     MessagingApiBlob,
 )
-from linebot.v3.messaging.models import audio_message
 from linebot.v3.webhooks import (
     FileMessageContent,
     ImageMessageContent,
@@ -31,8 +27,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from uuid import uuid4
 import aiofiles
-from linebot.v3.webhooks.models import message_content
-from werkzeug.datastructures import headers
 
 
 dotenv.load_dotenv()
@@ -208,12 +202,19 @@ def handle_message(event):
                     user_id, text, features=features, tool_ids=tool_ids, helpers=helpers
                 )
             )
-            user_cache[user_id].history.append({"role": "user", "content": text})
         except Exception as e:
             is_error = True
             replies = [Reply(type=ReplyType.Text, content=str(e))]
 
         messages = []
+
+        if not is_error:
+            for reply in replies:
+                if reply.memorize:
+                    user_cache[user_id].history.append(
+                        {"role": "user", "content": text}
+                    )
+                    break
 
         for reply in replies:
             if reply.type == ReplyType.ImageUrl:
@@ -229,7 +230,7 @@ def handle_message(event):
                 messages.append(
                     TextMessage(text=reply.content, quickReply=None, quoteToken=None)
                 )
-                if not is_error:
+                if not is_error and reply.memorize:
                     user_cache[user_id].history.append(
                         {"role": "assistant", "content": reply.content}
                     )
@@ -304,6 +305,7 @@ class ReplyType(Enum):
 class Reply:
     type: ReplyType
     content: str
+    memorize: bool = True
 
 
 async def upload_file_data_to_open_webui(data: bytearray) -> str:
@@ -439,11 +441,10 @@ async def retreive_reply_from_open_webui(
 
 
 async def handle_non_main_event(user_id: str, helpers: dict) -> list[Reply] | None:
-    if helpers.get("info") is not None:
-        tmp = [
-            f"using knowledge id: {user_cache[user_id].collection_id}",
-            f"using file id: {user_cache[user_id].file_id}",
-        ]
+    if helpers.get("reset_memory") is not None:
+        user_cache[user_id].history = []
+        return [Reply(type=ReplyType.Text, content="memory reset", memorize=False)]
+    elif helpers.get("info") is not None:
         return [Reply(type=ReplyType.Text, content=str(user_cache[user_id]))]
     elif helpers.get("list_knowledges") is not None:
         knowledges = await list_knowledges()

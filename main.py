@@ -73,6 +73,11 @@ selection type: {self.selection_list_type}
 selection: {SelectionElement.format_list(self.selection_list)}
         """.strip()
 
+    def append_history(self, message: dict):
+        self.history.append(message)
+        if HISTORY_CAP and len(self.history) > HISTORY_CAP:
+            self.history = self.history[len(self.history) - HISTORY_CAP :]
+
 
 class UserCache:
     user_cache: dict[str, Cache] = {}
@@ -112,6 +117,7 @@ OPEN_WEBUI_KNOWLEDGE_API = OPEN_WEBUI_URL + "/api/v1/knowledge"
 OPEN_WEBUI_FILE_API = OPEN_WEBUI_URL + "/api/v1/files"
 HTTPS_URL = get_required_env("HTTPS_URL").rstrip("/")
 OPEN_WEBUI_API_KEY = get_required_env("OPEN_WEBUI_API_KEY")
+HISTORY_CAP = int(os.getenv("HISTORY_CAP", 0))
 
 if not STORAGE_PATH.is_absolute():
     STORAGE_PATH = BASE_DIR / STORAGE_PATH
@@ -211,7 +217,7 @@ def handle_message(event):
         if not is_error:
             for reply in replies:
                 if reply.memorize:
-                    user_cache[user_id].history.append(
+                    user_cache[user_id].append_history(
                         {"role": "user", "content": text}
                     )
                     break
@@ -231,7 +237,7 @@ def handle_message(event):
                     TextMessage(text=reply.content, quickReply=None, quoteToken=None)
                 )
                 if not is_error and reply.memorize:
-                    user_cache[user_id].history.append(
+                    user_cache[user_id].append_history(
                         {"role": "assistant", "content": reply.content}
                     )
 

@@ -1,3 +1,4 @@
 files
+logs
 .env*
 !.env.example

@@ -28,10 +28,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from uuid import uuid4
 import aiofiles
+from datetime import datetime
 
 
 dotenv.load_dotenv()
 app = Flask(__name__)
+startup_time = datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
 
 
 def get_required_env(key: str) -> str:
@@ -98,7 +100,7 @@ class UserCache:
 
     async def save_history_log(self, user_id: str):
         os.makedirs(LOG_PATH, exist_ok=True)
-        async with aiofiles.open(LOG_PATH / f"{user_id}.json", "w") as f:
+        async with aiofiles.open(LOG_PATH / f"{startup_time}_{user_id}.json", "w") as f:
             await f.write(
                 json.dumps(self.user_cache[user_id].history, ensure_ascii=False)
             )

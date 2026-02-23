@@ -1,4 +1,5 @@
 import asyncio
+import datetime
 from enum import Enum, auto
 from flask import Flask, request, abort, send_file
 
@@ -58,6 +59,7 @@ class SelectionType(Enum):
 
 @dataclass
 class Cache:
+    user_id: str | None = None
     file_id: str | None = None
     collection_id: str | None = None
     selection_list: list[SelectionElement] = field(default_factory=list)
@@ -88,10 +90,19 @@ class UserCache:
     def __getitem__(self, user_id: str, auto_init: bool = True) -> Cache:
         if auto_init and user_id not in self.user_cache:
             self.user_cache[user_id] = Cache()
+
         return self.user_cache[user_id]
 
     def __contains__(self, user_id: str) -> bool:
         return user_id in self.user_cache
+
+    async def save_history_log(self, user_id: str):
+        os.makedirs(LOG_PATH, exist_ok=True)
+        async with aiofiles.open(LOG_PATH / f"{user_id}.json", "w") as f:
+            await f.write(
+                json.dumps(self.user_cache[user_id].history, ensure_ascii=False)
+            )
+            # json.dump(self.user_cache[user_id], f)
 
 
 class ReplyException(Exception):
@@ -106,12 +117,19 @@ class CacheException(Exception):
     pass
 
 
+def get_abosolute_path(path: Path | str) -> Path:
+    if not Path(path).is_absolute():
+        return BASE_DIR / path
+    return Path(path)
+
+
 configuration = Configuration(access_token=os.getenv("CHANNEL_ACCESS_TOKEN"))
 handler = WebhookHandler(os.getenv("CHANNEL_SECRET"))
 config = {}
 user_cache = UserCache()
 BASE_DIR = Path(__file__).resolve().parent
-STORAGE_PATH = Path(get_required_env("STORAGE_PATH"))
+STORAGE_PATH = get_abosolute_path(get_required_env("STORAGE_PATH"))
+LOG_PATH = get_abosolute_path(get_required_env("LOG_PATH"))
 OPEN_WEBUI_URL = get_required_env("OPEN_WEBUI_URL").rstrip("/")
 OPEN_WEBUI_KNOWLEDGE_API = OPEN_WEBUI_URL + "/api/v1/knowledge"
 OPEN_WEBUI_FILE_API = OPEN_WEBUI_URL + "/api/v1/files"
@@ -119,8 +137,6 @@ HTTPS_URL = get_required_env("HTTPS_URL").rstrip("/")
 OPEN_WEBUI_API_KEY = get_required_env("OPEN_WEBUI_API_KEY")
 HISTORY_CAP = int(os.getenv("HISTORY_CAP", 0))
 
-if not STORAGE_PATH.is_absolute():
-    STORAGE_PATH = BASE_DIR / STORAGE_PATH
 
 with open("config.json", "r") as f:
     config = json.load(f)
@@ -214,12 +230,14 @@ def handle_message(event):
 
         messages = []
 
+        histroy_appended = False
         if not is_error:
             for reply in replies:
                 if reply.memorize:
                     user_cache[user_id].append_history(
                         {"role": "user", "content": text}
                     )
+                    histroy_appended = True
                     break
 
         for reply in replies:
@@ -240,6 +258,10 @@ def handle_message(event):
                     user_cache[user_id].append_history(
                         {"role": "assistant", "content": reply.content}
                     )
+                    histroy_appended = True
+
+        if histroy_appended:
+            asyncio.run(user_cache.save_history_log(user_id))
 
         line_bot_api.reply_message_with_http_info(
             ReplyMessageRequest(

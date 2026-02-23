@@ -1,5 +1,4 @@
 import asyncio
-import datetime
 from enum import Enum, auto
 from flask import Flask, request, abort, send_file
 
@@ -11,6 +10,7 @@ from linebot.v3.messaging import (
     ImageMessage,
     MessagingApi,
     ReplyMessageRequest,
+    ShowLoadingAnimationRequest,
     TextMessage,
     MessagingApiBlob,
 )
@@ -28,10 +28,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from uuid import uuid4
 import aiofiles
+from datetime import datetime
 
 
 dotenv.load_dotenv()
 app = Flask(__name__)
+startup_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
 
 def get_required_env(key: str) -> str:
@@ -98,7 +100,7 @@ class UserCache:
 
     async def save_history_log(self, user_id: str):
         os.makedirs(LOG_PATH, exist_ok=True)
-        async with aiofiles.open(LOG_PATH / f"{user_id}.json", "w") as f:
+        async with aiofiles.open(LOG_PATH / f"{startup_time}_{user_id}.json", "w") as f:
             await f.write(
                 json.dumps(self.user_cache[user_id].history, ensure_ascii=False)
             )
@@ -117,7 +119,7 @@ class CacheException(Exception):
     pass
 
 
-def get_abosolute_path(path: Path | str) -> Path:
+def get_absolute_path(path: Path | str) -> Path:
     if not Path(path).is_absolute():
         return BASE_DIR / path
     return Path(path)
@@ -128,8 +130,8 @@ handler = WebhookHandler(os.getenv("CHANNEL_SECRET"))
 config = {}
 user_cache = UserCache()
 BASE_DIR = Path(__file__).resolve().parent
-STORAGE_PATH = get_abosolute_path(get_required_env("STORAGE_PATH"))
-LOG_PATH = get_abosolute_path(get_required_env("LOG_PATH"))
+STORAGE_PATH = get_absolute_path(get_required_env("STORAGE_PATH"))
+LOG_PATH = get_absolute_path(get_required_env("LOG_PATH"))
 OPEN_WEBUI_URL = get_required_env("OPEN_WEBUI_URL").rstrip("/")
 OPEN_WEBUI_KNOWLEDGE_API = OPEN_WEBUI_URL + "/api/v1/knowledge"
 OPEN_WEBUI_FILE_API = OPEN_WEBUI_URL + "/api/v1/files"
@@ -187,6 +189,9 @@ def handle_all_file(event):
                 quoteToken=None,
             )
         ]
+        line_bot_api.show_loading_animation(
+            ShowLoadingAnimationRequest(chatId=user_id, loadingSeconds=60)
+        )
         line_bot_api.reply_message_with_http_info(
             ReplyMessageRequest(
                 replyToken=event.reply_token,
@@ -218,6 +223,9 @@ def handle_message(event):
         (text, tool_ids) = extract_tool_ids(text)
         (text, helpers) = extract_helpers(text)
         is_error = False
+        line_bot_api.show_loading_animation(
+            ShowLoadingAnimationRequest(chatId=user_id, loadingSeconds=60)
+        )
         try:
             replies = asyncio.run(
                 retreive_reply_from_open_webui(

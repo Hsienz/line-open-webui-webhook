@@ -61,7 +61,6 @@ class SelectionType(Enum):
 
 @dataclass
 class Cache:
-    user_id: str | None = None
     file_id: str | None = None
     collection_id: str | None = None
     selection_list: list[SelectionElement] = field(default_factory=list)
@@ -104,7 +103,6 @@ class UserCache:
             await f.write(
                 json.dumps(self.user_cache[user_id].history, ensure_ascii=False)
             )
-            # json.dump(self.user_cache[user_id], f)
 
 
 class ReplyException(Exception):
@@ -454,7 +452,7 @@ async def retreive_reply_from_open_webui(
                 if user_id in user_cache:
                     collection_id = user_cache[user_id].collection_id
                     print(f"chat with collection_id {collection_id}")
-                    data["collections"] = [{"tpye": "collection", "id": collection_id}]
+                    data["collections"] = [{"type": "collection", "id": collection_id}]
                 else:
                     return [
                         Reply(
@@ -462,6 +460,8 @@ async def retreive_reply_from_open_webui(
                             content="no collection_id cache, please create knowledge or use knowledge first",
                         )
                     ]
+            elif default_knowledge := os.getenv("DEFAULT_KNOWLEDGE", ""):
+                data["collections"] = [{"type": "collection", "id": default_knowledge}]
 
         async with session.post(url, headers=headers, json=data) as response:
             data = await response.json()

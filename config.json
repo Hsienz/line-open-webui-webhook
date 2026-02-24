@@ -6,16 +6,13 @@
     "prefix": "/",
     "type": {
       "reset_memory": {
-        "postfix": "",
         "triggers": [
           "reset_memory",
           "reset-memory",
-          "reset memory",
           "重置記憶"
         ]
       },
       "info": {
-        "postfix": "",
         "triggers": [
           "info",
           "資訊"
@@ -23,21 +20,17 @@
         "enable": true
       },
       "list_knowledges": {
-        "postfix": "",
         "triggers": [
           "list_knowledges",
           "list-knowledges",
-          "list knowledges",
           "列出知識庫"
         ],
         "enable": true
       },
       "use_knowledge": {
-        "postfix": " ",
         "triggers": [
           "use_knowledge",
           "use-knowledge",
-          "use knowledge",
           "使用知識庫"
         ],
         "params": [
@@ -46,11 +39,9 @@
         "enable": true
       },
       "use_file": {
-        "postfix": " ",
         "triggers": [
           "use_file",
           "use-file",
-          "use file",
           "使用檔案"
         ],
         "params": [
@@ -59,20 +50,14 @@
         "enable": true
       },
       "list_files": {
-        "postfix": "",
         "triggers": [
           "list_files",
           "list-files",
-          "list files",
-          "list_file",
-          "list-file",
-          "list file",
           "列出檔案"
         ],
         "enable": true
       },
       "list_knowledge_files": {
-        "postfix": "",
         "triggers": [
           "list_knowledge_files",
           "list-knowledge-files",
@@ -82,18 +67,16 @@
         "enable": true
       },
       "add_file_to_knowledge": {
-        "postfix": "",
         "triggers": [
           "add_file_to_knowledge",
-          "add file to knowledge"
+          "add-file-to-knowledge"
         ],
         "enable": true
       },
       "create_knowledge": {
-        "postfix": "",
         "triggers": [
           "create_knowledge",
-          "create knowledge",
+          "create-knowledge",
           "創建知識庫",
           "創建新知識庫",
           "新知識庫"
@@ -102,47 +85,34 @@
         "default": false
       },
       "chat_with_file": {
-        "postfix": " ",
         "triggers": [
           "chat_with_file",
           "chat-with-file",
-          "chat with file",
           "file_chat",
-          "file chat",
+          "file-chat",
           "使用檔案聊天",
-          "使用檔案",
-          "檔案聊天",
-          "檔案"
+          "檔案聊天"
         ],
         "enable": true,
         "default": false
       },
       "chat_with_collection": {
-        "postfix": " ",
         "triggers": [
           "chat_with_knowledge",
           "chat-with-knowledge",
-          "chat with knowledge",
           "knowledge_chat",
-          "knowledge chat",
           "chat_with_collection",
           "chat-with-collection",
-          "chat with collection",
           "collection_chat",
-          "collection chat",
           "使用知識庫聊天",
-          "使用知識庫",
-          "知識庫聊天",
-          "知識庫"
+          "知識庫聊天"
         ],
         "enable": true,
         "default": false
       },
       "file_status": {
-        "postfix": "",
         "triggers": [
           "file_status",
-          "file status",
           "status",
           "檔案狀況",
           "檔案進度",
@@ -158,10 +128,8 @@
     "prefix": "/",
     "type": {
       "web_search": {
-        "postfix": " ",
         "triggers": [
           "web_search",
-          "web search",
           "web",
           "search",
           "web-search",
@@ -174,7 +142,6 @@
         "default": false
       },
       "image_generation": {
-        "postfix": " ",
         "triggers": [
           "image",
           "generate_image",

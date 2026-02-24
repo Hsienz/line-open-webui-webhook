@@ -1,5 +1,6 @@
 import asyncio
 from enum import Enum, auto
+from re import L
 from flask import Flask, request, abort, send_file
 
 from linebot.v3 import WebhookHandler
@@ -230,7 +231,7 @@ def handle_message(event):
                     user_id, text, features=features, tool_ids=tool_ids, helpers=helpers
                 )
             )
-        except Exception as e:
+        except ParamsNotSufficant as e:
             is_error = True
             replies = [Reply(type=ReplyType.Text, content=str(e))]
 
@@ -287,33 +288,46 @@ class ExtractType(Enum):
 def extract(text: str, type: ExtractType) -> tuple[str, dict]:
     ret = {}
     type_dict = config.get(type.value, {})
+    splited = text.split()
+    maybe_command = splited[0]
+    maybe_params = splited[1:]
     for k, v in type_dict.get("type", {}).items():
         if v.get("default", False) and not v.get("params", []):
             ret[k] = {}
 
+        ok = False
         for y in v.get("triggers", []):
-            target = f"{type_dict.get('prefix', '/')}{y}{v.get('postfix', ' ')}"
-            index = text.find(target)
-            if index != -1:
-                text = text.replace(target, "")
-                maybe_params = text[index:].split()
-                target_params = v.get("params", [])
-                print(target_params)
-                print(maybe_params)
-                if len(target_params) > len(maybe_params):
-                    raise ParamsNotSufficant(
-                        f"params not fulfill, expect {len(target_params)} params for \n{'\n'.join(target_params)},\nget on {len(maybe_params)} params"
-                    )
+            target = f"{type_dict.get('prefix', '/')}{y}{v.get('postfix', '')}"
+            print(target, text)
+            if maybe_command != target:
+                continue
 
-                params = {}
-                for i, z in enumerate(target_params):
-                    params[z] = maybe_params[i]
-                    text = text[:index] + text[index:].lstrip()[len(maybe_params[i]) :]
+            print(maybe_command, target)
 
-                ret[k] = params
+            ok = True
+            target_params = v.get("params", [])
+            print(target_params)
+            print(maybe_params)
+            if len(target_params) > len(maybe_params):
+                raise ParamsNotSufficant(
+                    f"params not fulfill, expect {len(target_params)} params for \n{'\n'.join(target_params)},\nget on {len(maybe_params)} params"
+                )
+
+            params = {}
+            for i, z in enumerate(target_params):
+                params[z] = maybe_params[i]
+
+            text = " ".join(maybe_params[len(target_params) :])
+
+            ret[k] = params
+            if ok:
+                break
 
         if not v.get("enable", True) and k in ret:
             del ret[k]
+
+        if ok:
+            break
 
     return (text.strip(), ret)
 

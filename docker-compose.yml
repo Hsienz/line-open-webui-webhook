@@ -1,0 +1,18 @@
+version: "3.9"
+
+services:
+  line-webhook:
+    build: .
+    container_name: line-webhook
+    ports:
+      - "5000:5000"
+
+  ngrok:
+    image: ngrok/ngrok:latest
+    restart: unless-stopped
+    command:
+      - "http"
+      - "line-webhook:5000"
+    env_file: ".env"
+    ports:
+      - 4040:4040

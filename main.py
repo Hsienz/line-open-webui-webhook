@@ -218,65 +218,84 @@ def handle_message(event):
         user_id = event.source.user_id
         replies: list[Reply] = []
         text = event.message.text
-        (text, features) = extract_features(text)
-        (text, tool_ids) = extract_tool_ids(text)
-        (text, helpers) = extract_helpers(text)
+        features = {}
+        tool_ids = {}
+        helpers = {}
         is_error = False
+
         line_bot_api.show_loading_animation(
             ShowLoadingAnimationRequest(chatId=user_id, loadingSeconds=60)
         )
+
         try:
-            replies = asyncio.run(
-                retreive_reply_from_open_webui(
-                    user_id, text, features=features, tool_ids=tool_ids, helpers=helpers
-                )
-            )
+            (text, features) = extract_features(text)
+            (text, tool_ids) = extract_tool_ids(text)
+            (text, helpers) = extract_helpers(text)
         except ParamsNotSufficant as e:
             is_error = True
-            replies = [Reply(type=ReplyType.Text, content=str(e))]
-
-        messages = []
-
-        histroy_appended = False
-        if not is_error:
-            for reply in replies:
-                if reply.memorize:
-                    user_cache[user_id].append_history(
-                        {"role": "user", "content": text}
-                    )
-                    histroy_appended = True
-                    break
-
-        for reply in replies:
-            if reply.type == ReplyType.ImageUrl:
-                local_url = asyncio.run(download_image_from_open_webui(reply.content))
-                messages.append(
-                    ImageMessage(
-                        originalContentUrl=local_url,
-                        previewImageUrl=local_url,
-                        quickReply=None,
-                    )
+            replies = [Reply(type=ReplyType.Text, content=str(e), memorize=False)]
+        # hide low level errro to reduce unneccessary info for user
+        except Exception as _:
+            is_error = True
+            replies = [
+                Reply(
+                    type=ReplyType.Text,
+                    content="a exception happened, please see server log",
+                    memorize=False,
                 )
-            elif reply.type == ReplyType.Text:
-                messages.append(
-                    TextMessage(text=reply.content, quickReply=None, quoteToken=None)
-                )
-                if not is_error and reply.memorize:
-                    user_cache[user_id].append_history(
-                        {"role": "assistant", "content": reply.content}
-                    )
-                    histroy_appended = True
+            ]
 
-        if histroy_appended:
-            asyncio.run(user_cache.save_history_log(user_id))
+        if is_error:
+            send_messages_from_replies(
+                line_bot_api=line_bot_api, event=event, text=text, replies=replies
+            )
+            return
 
-        line_bot_api.reply_message_with_http_info(
-            ReplyMessageRequest(
-                replyToken=event.reply_token,
-                messages=messages,
-                notificationDisabled=False,
+        replies = asyncio.run(
+            retreive_reply_from_open_webui(
+                user_id, text, features=features, tool_ids=tool_ids, helpers=helpers
             )
         )
+        send_messages_from_replies(
+            line_bot_api=line_bot_api, event=event, text=text, replies=replies
+        )
+
+
+def send_messages_from_replies(line_bot_api, event, text, replies):
+    messages = []
+    user_id = event.source.user_id
+
+    user_cache[user_id].append_history({"role": "user", "content": text})
+
+    for reply in replies:
+        if reply.type == ReplyType.ImageUrl:
+            local_url = asyncio.run(download_image_from_open_webui(reply.content))
+            messages.append(
+                ImageMessage(
+                    originalContentUrl=local_url,
+                    previewImageUrl=local_url,
+                    quickReply=None,
+                )
+            )
+        elif reply.type == ReplyType.Text:
+            messages.append(
+                TextMessage(text=reply.content, quickReply=None, quoteToken=None)
+            )
+            if reply.memorize:
+                user_cache[user_id].append_history(
+                    {"role": "assistant", "content": reply.content}
+                )
+                histroy_appended = True
+
+    asyncio.run(user_cache.save_history_log(user_id))
+
+    line_bot_api.reply_message_with_http_info(
+        ReplyMessageRequest(
+            replyToken=event.reply_token,
+            messages=messages,
+            notificationDisabled=False,
+        )
+    )
 
 
 class ExtractType(Enum):
@@ -722,4 +741,4 @@ async def use_knowledge(user_id, no) -> SelectionElement | None:
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(host="0.0.0.0", debug=True)
